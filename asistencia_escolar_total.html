@@ -151,6 +151,36 @@
 </div>
 
 <script>
+ localStorage.setItem('asistencia_escolar_total_db', JSON.stringify(db));
+ res.innerHTML = <div class="badge-success">¡Asistencia Confirmada!<br><span style="font-weight:normal;
+ font-size:13px;">Hola ${alumnoEncontrado.nombre}, tu presente ha sido computado.</span></div>;
+  }
+ // Calcula estadísticas cruzando la matrícula contra los escaneos del mesfunction calcularEstadisticas() 
+ {
+  let escaneos = JSON.parse(localStorage.getItem('asistencia_escolar_total_db')) || [];
+  // Obtener cuántos días únicos se ha tomado asistencia en el mes en totallet diasDeClase = [...new Set(escaneos.map(e => e.fecha))].length;
+  if (diasDeClase === 0) diasDeClase = 1;
+  // Evita errores de cálculo al iniciar el mesreturn 
+  MATRICULA_ALUMNOS.map(alumno => 
+   {
+    // Cuenta cuántas veces aparece el ID del alumno en el historial de escaneoslet asistencias = escaneos.filter(e => e.alumnoId === alumno.id).length;
+    let inasistencias = diasDeClase - asistencias;return {...alumno,asistencias: asistencias,inasistencias: inasistencias < 0 ? 0 : inasistencias};});}
+ // Mostrar el resumen matemático en el panel del preceptorfunction renderTeacherDashboard() {const tbody = document.getElementById('live-records');
+ setInterval(() => {let datosProcesados = calcularEstadisticas();
+tbody.innerHTML = "";
+datosProcesados.forEach(alumno => {tbody.innerHTML +=  <tr> <td>${alumno.nombre}</td> <td><strong>${alumno.curso}</strong></td> <td style="text-align:center; 
+font-weight:bold; color:#16a34a;">${alumno.asistencias}</td> <td style="text-align:center; font-weight:bold; color:#dc2626;">${alumno.inasistencias}</td> </tr>;});}, 1500);}
+ // Exportación a Excel organizada con contadores totalesfunction exportToExcel()
+  {let datos = calcularEstadisticas();let csvContent = "\uFEFF";csvContent += "Alumno;Curso;Asistencias Totales;Inasistencias Totales\n";
+ datos.forEach(r => {csvContent += ${r.nombre};${r.curso};${r.asistencias};${r.inasistencias}\n;});
+ const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+ const url = URL.createObjectURL(blob);
+ const link = document.createElement("a");
+ link.setAttribute("href", url);
+ link.setAttribute("download", Reporte_Faltas_Mensual.csv);
+ document.body.appendChild(link);
+ link.click();document.body.removeChild(link);}
+
     const INTERVALO_QR = 25; 
     let countdown = INTERVALO_QR;
 
@@ -253,3 +283,4 @@
         }
 
         db.push(nuevoRegistro);
+     
