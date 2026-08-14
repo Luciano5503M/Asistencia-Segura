@@ -1,0 +1,255 @@
+ <!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Escolar Avanzado - QR Dinámico</title>
+    <!-- Librería para generación de códigos QR -->
+    <script src="https://cloudflare.com"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f1f5f9;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 14px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.06);
+            text-align: center;
+            max-width: 520px;
+            width: 100%;
+        }
+        h1 { color: #1e3a8a; font-size: 22px; margin-bottom: 5px; }
+        .subtitle { color: #64748b; font-size: 13px; margin-bottom: 15px; }
+        #qrcode {
+            display: inline-block;
+            background: white;
+            padding: 12px;
+            border: 3px solid #cbd5e1;
+            border-radius: 10px;
+            margin: 5px 0;
+        }
+        .timer-bar {
+            width: 100%;
+            background-color: #e2e8f0;
+            height: 6px;
+            border-radius: 3px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        #progress {
+            width: 100%;
+            height: 100%;
+            background-color: #ef4444;
+            transition: width 1s linear;
+        }
+        .form-group {
+            text-align: left;
+            margin-bottom: 12px;
+        }
+        label { display: block; margin-bottom: 4px; color: #334155; font-weight: 600; font-size: 13px; }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 15px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 5px;
+        }
+        button:hover { background-color: #1d4ed8; }
+        .btn-excel { background-color: #16a34a; margin-top: 15px; }
+        .btn-excel:hover { background-color: #15803d; }
+        .hidden { display: none; }
+        .badge-error { background-color: #fee2e2; color: #991b1b; padding: 15px; border-radius: 6px; font-weight: bold; }
+        .badge-success { background-color: #dcfce7; color: #166534; padding: 15px; border-radius: 6px; font-weight: bold; }
+        
+        .admin-section {
+            margin-top: 20px;
+            text-align: left;
+            border-top: 2px dashed #e2e8f0;
+            padding-top: 15px;
+        }
+        .admin-table {
+            margin-top: 10px;
+            font-size: 11px;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .admin-table th { background: #f8fafc; padding: 6px; color: #64748b; text-align: left; }
+        .admin-table td { padding: 6px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- ================= PANEL DEL PRECEPTOR / PROYECTOR ================= -->
+    <div id="view-teacher">
+        <h1>Asistencia y Estadísticas Mensuales</h1>
+        <p class="subtitle">QR Dinámico (25s) • Cálculo Automático de Faltas</p>
+        
+        <div id="qrcode"></div>
+        <div class="timer-bar"><div id="progress"></div></div>
+        
+        <div class="admin-section">
+            <strong style="color:#0f172a; font-size:14px;">Resumen de Alumnos del Mes:</strong>
+            
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Alumno</th>
+                        <th>Curso</th>
+                        <th style="text-align:center; color:#16a34a;">Asistencias</th>
+                        <th style="text-align:center; color:#dc2626;">Inasistencias</th>
+                    </tr>
+                </thead>
+                <tbody id="live-records">
+                    <!-- Se rellena automáticamente con JS -->
+                </tbody>
+            </table>
+            
+            <button class="btn-excel" onclick="exportToExcel()">📥 Descargar Reporte Completo (Excel)</button>
+        </div>
+    </div>
+
+    <!-- ================= FORMULARIO DEL ALUMNO (CELULAR) ================= -->
+    <div id="view-student" class="hidden">
+        <h1>Registro de Alumno</h1>
+        <p class="subtitle">Selecciona tus datos para guardar tu asistencia hoy.</p>
+        
+        <div id="form-container">
+            <div class="form-group">
+                <label>Selecciona tu Nombre y Apellido:</label>
+                <!-- Usamos un desplegable para evitar errores de tipeo y cruzar bien los datos -->
+                <select id="student-select">
+                    <!-- Se carga dinámicamente desde la lista oficial -->
+                </select>
+            </div>
+            
+            <button onclick="processStudentAttendance()">Enviar Presente</button>
+        </div>
+        <div id="student-result" class="hidden" style="margin-top:15px;"></div>
+    </div>
+</div>
+
+<script>
+    const INTERVALO_QR = 25; 
+    let countdown = INTERVALO_QR;
+
+    // ================= MATRÍCULA OFICIAL DE LA ESCUELA =================
+    // El preceptor puede modificar esta lista agregando los alumnos reales del colegio
+    const MATRICULA_ALUMNOS = [
+        { id: 1, nombre: "Martina Rossi", curso: "4° Año - A" },
+        { id: 2, nombre: "Juan Pérez", curso: "4° Año - A" },
+        { id: 3, nombre: "Carlos Tévez", curso: "5° Año - B" },
+        { id: 4, nombre: "Sofía Benítez", curso: "5° Año - B" },
+        { id: 5, nombre: "Lucas Gómez", curso: "6° Año - C" }
+    ];
+
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        if (urlParams.has('t')) {
+            // Modo Alumno Celular
+            document.getElementById('view-teacher').classList.add('hidden');
+            document.getElementById('view-student').classList.remove('hidden');
+            
+            // Cargar alumnos en el select del celular
+            const select = document.getElementById('student-select');
+            MATRICULA_ALUMNOS.forEach(al => {
+                let opt = document.createElement('option');
+                opt.value = al.id;
+                opt.innerText = `${al.nombre} (${al.curso})`;
+                select.appendChild(opt);
+            });
+            
+            // Validación anti-fraude por tiempo
+            const tokenTiempo = parseInt(urlParams.get('t'));
+            const tiempoActual = Math.floor(Date.now() / 1000);
+            
+            if (tiempoActual - tokenTiempo > (INTERVALO_QR + 10)) {
+                document.getElementById('form-container').classList.add('hidden');
+                const res = document.getElementById('student-result');
+                res.classList.remove('hidden');
+                res.innerHTML = `<div class="badge-error">⚠️ Código Expirado.<br><span style="font-weight:normal; font-size:12px;">Escanea el código QR que se muestra actualmente en el proyector.</span></div>`;
+            }
+        } else {
+            // Modo Preceptor
+            startDynamicQR();
+            renderTeacherDashboard();
+        }
+    }
+
+    function startDynamicQR() {
+        function updateQR() {
+            const timestampUnico = Math.floor(Date.now() / 1000);
+            let baseUrl = window.location.href.split('?');
+            let urlConToken = `${baseUrl}?t=${timestampUnico}`;
+
+            document.getElementById("qrcode").innerHTML = "";
+            new QRCode(document.getElementById("qrcode"), {
+                text: urlConToken,
+                width: 200,
+                height: 200,
+                colorDark : "#1e3a8a",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+            countdown = INTERVALO_QR;
+        }
+        updateQR();
+        setInterval(() => {
+            countdown--;
+            document.getElementById('progress').style.width = ((countdown / INTERVALO_QR) * 100) + "%";
+            if (countdown <= 0) updateQR();
+        }, 1000);
+    }
+
+    // El alumno marca presente
+    function processStudentAttendance() {
+        const studentId = parseInt(document.getElementById('student-select').value);
+        const alumnoEncontrado = MATRICULA_ALUMNOS.find(a => a.id === studentId);
+
+        const ahora = new Date();
+        const fechaFormateada = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const horaActualStr = ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const nuevoRegistro = {
+            alumnoId: alumnoEncontrado.id,
+            fecha: fechaFormateada,
+            hora: horaActualStr
+        };
+
+        let db = JSON.parse(localStorage.getItem('asistencia_escolar_total_db')) || [];
+        
+        // Evitar que el mismo alumno firme dos veces el mismo día
+        const yaExiste = db.some(r => r.alumnoId === nuevoRegistro.alumnoId && r.fecha === nuevoRegistro.fecha);
+        
+        document.getElementById('form-container').classList.add('hidden');
+        const res = document.getElementById('student-result');
+        res.classList.remove('hidden');
+
+        if (yaExiste) {
+            res.innerHTML = `<div class="badge-error">⚠️ Ya registrado.<br><span style="font-weight:normal; font-size:13px;">Ya registraste tu presente el día de hoy (${fechaFormateada}).</span></div>`;
+            return;
+        }
+
+        db.push(nuevoRegistro);
