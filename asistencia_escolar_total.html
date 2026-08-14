@@ -111,14 +111,14 @@
         <h1>Asistencia y Estadísticas Mensuales</h1>
         <p class="subtitle">QR Dinámico (25s) • Cálculo Automático de Faltas</p>
         
-        <div id="qrcode"></div>
-        <div class="timer-bar"><div id="progress"></div></div>
+        <div id="qrcode" aria-hidden="true"></div>
+        <div class="timer-bar"><div id="progress" style="width:100%"></div></div>
         <div class="timer-text">Tiempo restante: <span id="timer-countdown">25</span>s</div>
         
         <div class="admin-section">
             <strong style="color:#0f172a; font-size:14px;">Resumen de Alumnos del Mes:</strong>
             
-            <table class="admin-table">
+            <table class="admin-table" role="table">
                 <thead>
                     <tr>
                         <th>Alumno</th>
@@ -143,9 +143,9 @@
         
         <div id="form-container">
             <div class="form-group">
-                <label>Selecciona tu Nombre y Apellido:</label>
+                <label for="student-select">Selecciona tu Nombre y Apellido:</label>
                 <!-- Usamos un desplegable para evitar errores de tipeo y cruzar bien los datos -->
-                <select id="student-select">
+                <select id="student-select" aria-label="Selecciona alumno">
                     <!-- Se carga dinámicamente desde la lista oficial -->
                 </select>
             </div>
@@ -175,8 +175,8 @@
         let escaneos = JSON.parse(localStorage.getItem('asistencia_escolar_total_db')) || [];
         // Obtener cuántos días únicos se ha tomado asistencia en el mes en total
         let diasDeClase = [...new Set(escaneos.map(e => e.fecha))].length;
+        // Evita división por cero al inicio del mes
         if (diasDeClase === 0) diasDeClase = 1;
-        // Evita errores de cálculo al iniciar el mes
         return MATRICULA_ALUMNOS.map(alumno => {
             // Cuenta cuántas veces aparece el ID del alumno en el historial de escaneos
             let asistencias = escaneos.filter(e => e.alumnoId === alumno.id).length;
@@ -192,6 +192,7 @@
     // Mostrar el resumen matemático en el panel del preceptor
     function renderTeacherDashboard() {
         const tbody = document.getElementById('live-records');
+        // Actualiza cada 1.5s para reflejar cambios en localStorage
         setInterval(() => {
             let datosProcesados = calcularEstadisticas();
             tbody.innerHTML = "";
@@ -206,7 +207,7 @@
         }, 1500);
     }
 
-    // Exportación a Excel organizada con contadores totales
+    // Exportación a Excel organizada con contadores totales (CSV con BOM para Excel)
     function exportToExcel() {
         let datos = calcularEstadisticas();
         let csvContent = "\uFEFF";
@@ -222,6 +223,7 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 
     function startDynamicQR() {
@@ -241,10 +243,12 @@
             });
             countdown = INTERVALO_QR;
             document.getElementById('timer-countdown').innerText = countdown;
+            document.getElementById('progress').style.width = "100%";
         }
         updateQR();
         setInterval(() => {
             countdown--;
+            if (countdown < 0) countdown = 0;
             document.getElementById('timer-countdown').innerText = countdown;
             document.getElementById('progress').style.width = ((countdown / INTERVALO_QR) * 100) + "%";
             if (countdown <= 0) updateQR();
@@ -253,12 +257,23 @@
 
     // El alumno marca presente
     function processStudentAttendance() {
-        const studentId = parseInt(document.getElementById('student-select').value);
+        const select = document.getElementById('student-select');
+        const value = select ? select.value : null;
+        const studentId = value ? parseInt(value, 10) : NaN;
         const alumnoEncontrado = MATRICULA_ALUMNOS.find(a => a.id === studentId);
 
         const ahora = new Date();
         const fechaFormateada = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const horaActualStr = ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const res = document.getElementById('student-result');
+
+        if (!alumnoEncontrado) {
+            // Mensaje de error si no hay selección válida
+            res.classList.remove('hidden');
+            res.innerHTML = `<div class="badge-error">⚠️ Selección inválida.<br><span style="font-weight:normal; font-size:13px;">Por favor selecciona tu nombre de la lista.</span></div>`;
+            return;
+        }
 
         const nuevoRegistro = {
             alumnoId: alumnoEncontrado.id,
@@ -272,7 +287,6 @@
         const yaExiste = db.some(r => r.alumnoId === nuevoRegistro.alumnoId && r.fecha === nuevoRegistro.fecha);
         
         document.getElementById('form-container').classList.add('hidden');
-        const res = document.getElementById('student-result');
         res.classList.remove('hidden');
 
         if (yaExiste) {
@@ -282,7 +296,7 @@
 
         db.push(nuevoRegistro);
         localStorage.setItem('asistencia_escolar_total_db', JSON.stringify(db));
-        res.innerHTML = `<div class="badge-success">¡Asistencia Confirmada!<br><span style="font-weight:normal; font-size:13px;">Hola ${alumnoEncontrado.nombre}, tu presente ha sido computado.</span></div>`;
+        res.innerHTML = `<div class="badge-success">¡Asistencia Confirmada!<br><span style="font-weight:normal; font-size:13px;">Hola ${alumnoEncontrado.nombre}, tu presente ha sido computado (${horaActualStr} - ${fechaFormateada}).</span></div>`;
     }
 
     window.onload = function() {
@@ -295,6 +309,7 @@
             
             // Cargar alumnos en el select del celular
             const select = document.getElementById('student-select');
+            select.innerHTML = "";
             MATRICULA_ALUMNOS.forEach(al => {
                 let opt = document.createElement('option');
                 opt.value = al.id;
@@ -303,14 +318,22 @@
             });
             
             // Validación anti-fraude por tiempo
-            const tokenTiempo = parseInt(urlParams.get('t'));
+            const tokenTiempo = parseInt(urlParams.get('t'), 10);
             const tiempoActual = Math.floor(Date.now() / 1000);
             
-            if (tiempoActual - tokenTiempo > (INTERVALO_QR + 10)) {
+            if (isNaN(tokenTiempo)) {
                 document.getElementById('form-container').classList.add('hidden');
                 const res = document.getElementById('student-result');
                 res.classList.remove('hidden');
-                res.innerHTML = `<div class="badge-error">⚠️ Código Expirado.<br><span style="font-weight:normal; font-size:12px;">Escanea el código QR que se muestra actualmente en el proyector.</span></div>`;
+                res.innerHTML = `<div class="badge-error">⚠️ Token inválido.<br><span style="font-weight:normal; font-size:12px;">Vuelve a escanear el código QR que se muestra en el proyector.</span></div>`;
+            } else if (tiempoActual - tokenTiempo > (INTERVALO_QR + 10)) {
+                // Código expirado
+                document.getElementById('form-container').classList.add('hidden');
+                const res = document.getElementById('student-result');
+                res.classList.remove('hidden');
+                res.innerHTML = `<div class="badge-error">⚠️ Código Expirado.<br><span style="font-weight:normal; font-size:12px;">Escanea el código QR que se muestra actualmente en el proyector para obtener un código válido.</span></div>`;
+            } else {
+                // Token válido: mantener el formulario visible
             }
         } else {
             // Modo Preceptor
