@@ -1,11 +1,11 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control Escolar Avanzado - QR Dinámico</title>
     <!-- Librería para generación de códigos QR -->
-    <script src="https://cloudflare.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -49,6 +49,11 @@
             height: 100%;
             background-color: #ef4444;
             transition: width 1s linear;
+        }
+        .timer-text {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 5px;
         }
         .form-group {
             text-align: left;
@@ -108,6 +113,7 @@
         
         <div id="qrcode"></div>
         <div class="timer-bar"><div id="progress"></div></div>
+        <div class="timer-text">Tiempo restante: <span id="timer-countdown">25</span>s</div>
         
         <div class="admin-section">
             <strong style="color:#0f172a; font-size:14px;">Resumen de Alumnos del Mes:</strong>
@@ -151,36 +157,6 @@
 </div>
 
 <script>
- localStorage.setItem('asistencia_escolar_total_db', JSON.stringify(db));
- res.innerHTML = <div class="badge-success">¡Asistencia Confirmada!<br><span style="font-weight:normal;
- font-size:13px;">Hola ${alumnoEncontrado.nombre}, tu presente ha sido computado.</span></div>;
-  }
- // Calcula estadísticas cruzando la matrícula contra los escaneos del mesfunction calcularEstadisticas() 
- {
-  let escaneos = JSON.parse(localStorage.getItem('asistencia_escolar_total_db')) || [];
-  // Obtener cuántos días únicos se ha tomado asistencia en el mes en totallet diasDeClase = [...new Set(escaneos.map(e => e.fecha))].length;
-  if (diasDeClase === 0) diasDeClase = 1;
-  // Evita errores de cálculo al iniciar el mesreturn 
-  MATRICULA_ALUMNOS.map(alumno => 
-   {
-    // Cuenta cuántas veces aparece el ID del alumno en el historial de escaneoslet asistencias = escaneos.filter(e => e.alumnoId === alumno.id).length;
-    let inasistencias = diasDeClase - asistencias;return {...alumno,asistencias: asistencias,inasistencias: inasistencias < 0 ? 0 : inasistencias};});}
- // Mostrar el resumen matemático en el panel del preceptorfunction renderTeacherDashboard() {const tbody = document.getElementById('live-records');
- setInterval(() => {let datosProcesados = calcularEstadisticas();
-tbody.innerHTML = "";
-datosProcesados.forEach(alumno => {tbody.innerHTML +=  <tr> <td>${alumno.nombre}</td> <td><strong>${alumno.curso}</strong></td> <td style="text-align:center; 
-font-weight:bold; color:#16a34a;">${alumno.asistencias}</td> <td style="text-align:center; font-weight:bold; color:#dc2626;">${alumno.inasistencias}</td> </tr>;});}, 1500);}
- // Exportación a Excel organizada con contadores totalesfunction exportToExcel()
-  {let datos = calcularEstadisticas();let csvContent = "\uFEFF";csvContent += "Alumno;Curso;Asistencias Totales;Inasistencias Totales\n";
- datos.forEach(r => {csvContent += ${r.nombre};${r.curso};${r.asistencias};${r.inasistencias}\n;});
- const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
- const url = URL.createObjectURL(blob);
- const link = document.createElement("a");
- link.setAttribute("href", url);
- link.setAttribute("download", Reporte_Faltas_Mensual.csv);
- document.body.appendChild(link);
- link.click();document.body.removeChild(link);}
-
     const INTERVALO_QR = 25; 
     let countdown = INTERVALO_QR;
 
@@ -194,44 +170,64 @@ font-weight:bold; color:#16a34a;">${alumno.asistencias}</td> <td style="text-ali
         { id: 5, nombre: "Lucas Gómez", curso: "6° Año - C" }
     ];
 
-    window.onload = function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        
-        if (urlParams.has('t')) {
-            // Modo Alumno Celular
-            document.getElementById('view-teacher').classList.add('hidden');
-            document.getElementById('view-student').classList.remove('hidden');
-            
-            // Cargar alumnos en el select del celular
-            const select = document.getElementById('student-select');
-            MATRICULA_ALUMNOS.forEach(al => {
-                let opt = document.createElement('option');
-                opt.value = al.id;
-                opt.innerText = `${al.nombre} (${al.curso})`;
-                select.appendChild(opt);
+    // Calcula estadísticas cruzando la matrícula contra los escaneos del mes
+    function calcularEstadisticas() {
+        let escaneos = JSON.parse(localStorage.getItem('asistencia_escolar_total_db')) || [];
+        // Obtener cuántos días únicos se ha tomado asistencia en el mes en total
+        let diasDeClase = [...new Set(escaneos.map(e => e.fecha))].length;
+        if (diasDeClase === 0) diasDeClase = 1;
+        // Evita errores de cálculo al iniciar el mes
+        return MATRICULA_ALUMNOS.map(alumno => {
+            // Cuenta cuántas veces aparece el ID del alumno en el historial de escaneos
+            let asistencias = escaneos.filter(e => e.alumnoId === alumno.id).length;
+            let inasistencias = diasDeClase - asistencias;
+            return {
+                ...alumno,
+                asistencias: asistencias,
+                inasistencias: inasistencias < 0 ? 0 : inasistencias
+            };
+        });
+    }
+
+    // Mostrar el resumen matemático en el panel del preceptor
+    function renderTeacherDashboard() {
+        const tbody = document.getElementById('live-records');
+        setInterval(() => {
+            let datosProcesados = calcularEstadisticas();
+            tbody.innerHTML = "";
+            datosProcesados.forEach(alumno => {
+                tbody.innerHTML += `<tr>
+                    <td>${alumno.nombre}</td>
+                    <td><strong>${alumno.curso}</strong></td>
+                    <td style="text-align:center; font-weight:bold; color:#16a34a;">${alumno.asistencias}</td>
+                    <td style="text-align:center; font-weight:bold; color:#dc2626;">${alumno.inasistencias}</td>
+                </tr>`;
             });
-            
-            // Validación anti-fraude por tiempo
-            const tokenTiempo = parseInt(urlParams.get('t'));
-            const tiempoActual = Math.floor(Date.now() / 1000);
-            
-            if (tiempoActual - tokenTiempo > (INTERVALO_QR + 10)) {
-                document.getElementById('form-container').classList.add('hidden');
-                const res = document.getElementById('student-result');
-                res.classList.remove('hidden');
-                res.innerHTML = `<div class="badge-error">⚠️ Código Expirado.<br><span style="font-weight:normal; font-size:12px;">Escanea el código QR que se muestra actualmente en el proyector.</span></div>`;
-            }
-        } else {
-            // Modo Preceptor
-            startDynamicQR();
-            renderTeacherDashboard();
-        }
+        }, 1500);
+    }
+
+    // Exportación a Excel organizada con contadores totales
+    function exportToExcel() {
+        let datos = calcularEstadisticas();
+        let csvContent = "\uFEFF";
+        csvContent += "Alumno;Curso;Asistencias Totales;Inasistencias Totales\n";
+        datos.forEach(r => {
+            csvContent += `${r.nombre};${r.curso};${r.asistencias};${r.inasistencias}\n`;
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "Reporte_Faltas_Mensual.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     function startDynamicQR() {
         function updateQR() {
             const timestampUnico = Math.floor(Date.now() / 1000);
-            let baseUrl = window.location.href.split('?');
+            let baseUrl = window.location.href.split('?')[0];
             let urlConToken = `${baseUrl}?t=${timestampUnico}`;
 
             document.getElementById("qrcode").innerHTML = "";
@@ -244,10 +240,12 @@ font-weight:bold; color:#16a34a;">${alumno.asistencias}</td> <td style="text-ali
                 correctLevel : QRCode.CorrectLevel.M
             });
             countdown = INTERVALO_QR;
+            document.getElementById('timer-countdown').innerText = countdown;
         }
         updateQR();
         setInterval(() => {
             countdown--;
+            document.getElementById('timer-countdown').innerText = countdown;
             document.getElementById('progress').style.width = ((countdown / INTERVALO_QR) * 100) + "%";
             if (countdown <= 0) updateQR();
         }, 1000);
@@ -283,4 +281,44 @@ font-weight:bold; color:#16a34a;">${alumno.asistencias}</td> <td style="text-ali
         }
 
         db.push(nuevoRegistro);
-     
+        localStorage.setItem('asistencia_escolar_total_db', JSON.stringify(db));
+        res.innerHTML = `<div class="badge-success">¡Asistencia Confirmada!<br><span style="font-weight:normal; font-size:13px;">Hola ${alumnoEncontrado.nombre}, tu presente ha sido computado.</span></div>`;
+    }
+
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        if (urlParams.has('t')) {
+            // Modo Alumno Celular
+            document.getElementById('view-teacher').classList.add('hidden');
+            document.getElementById('view-student').classList.remove('hidden');
+            
+            // Cargar alumnos en el select del celular
+            const select = document.getElementById('student-select');
+            MATRICULA_ALUMNOS.forEach(al => {
+                let opt = document.createElement('option');
+                opt.value = al.id;
+                opt.innerText = `${al.nombre} (${al.curso})`;
+                select.appendChild(opt);
+            });
+            
+            // Validación anti-fraude por tiempo
+            const tokenTiempo = parseInt(urlParams.get('t'));
+            const tiempoActual = Math.floor(Date.now() / 1000);
+            
+            if (tiempoActual - tokenTiempo > (INTERVALO_QR + 10)) {
+                document.getElementById('form-container').classList.add('hidden');
+                const res = document.getElementById('student-result');
+                res.classList.remove('hidden');
+                res.innerHTML = `<div class="badge-error">⚠️ Código Expirado.<br><span style="font-weight:normal; font-size:12px;">Escanea el código QR que se muestra actualmente en el proyector.</span></div>`;
+            }
+        } else {
+            // Modo Preceptor
+            startDynamicQR();
+            renderTeacherDashboard();
+        }
+    }
+</script>
+
+</body>
+</html>
